@@ -37,10 +37,11 @@ class AlgebraView(View):
                 rasterlayer_id=layerid
             ).first()
             if tile:
-                data[name] = numpy.ma.masked_values(
-                    tile.rast.bands[0].data().ravel(),
-                    tile.rast.bands[0].nodata_value
-                )
+                data[name] = tile.rast.bands[0].data().ravel()
+                # data[name] = numpy.ma.masked_values(
+                #     tile.rast.bands[0].data().ravel(),
+                #     tile.rast.bands[0].nodata_value
+                # )
             else:
                 # Create empty image if any layer misses the required tile
                 img = Image.new("RGBA", (256, 256), (0, 0, 0, 0))
@@ -175,11 +176,12 @@ class TmsView(View):
 
         # Render tile
         if tile.exists() and colormap:
+            data = tile[0].rast.bands[0].data()
             # Mask values
-            data = numpy.ma.masked_values(
-                tile[0].rast.bands[0].data(),
-                tile[0].rast.bands[0].nodata_value
-            )
+            # data = numpy.ma.masked_values(
+            #     tile[0].rast.bands[0].data(),
+            #     tile[0].rast.bands[0].nodata_value
+            # )
 
             # Render tile using the legend data
             img = band_data_to_image(data, colormap)
