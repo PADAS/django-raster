@@ -6,7 +6,7 @@ from django.contrib.gis.geos import GEOSGeometry, MultiPolygon, Polygon
 from django.db import connection
 
 from .const import WEB_MERCATOR_SRID
-from .formulas import RasterAlgebraParser
+from .formulas import FormulaParser, RasterAlgebraParser
 from .rasterize import rasterize
 from .tiler import tile_index_range
 
@@ -53,17 +53,38 @@ WHERE rasterlayer_id={rasterlayer_id}
 """
 
 
-def aggregator(layer_dict, zoom, geom=None, formula=None, acres=True):
+class RasterAggregationException(Exception):
+    pass
+
+
+def aggregator(layer_dict, zoom=None, geom=None, formula=None, acres=True, grouping='auto'):
     """
     Compute aggregate statistics for a layers dictionary, potentially for
     an algebra expression and clipped by a geometry.
-    """
-    from .models import RasterLayer, RasterTile
 
-    parser = RasterAlgebraParser()
+    The grouping parameter specifies how to group the pixel values for the
+    aggregation count.
+
+    Allowed are the following options:
+
+    * 'auto' (the default). The output will be grouped by unique values if all
+      input rasters are discrete, otherwise a numpy histogram is used.
+    * 'discrete' groups the data will be grouped by unique values
+    * 'continuous' groups the data in a numpy histogram
+    * If an integer value is passed to the argument, it is interpreted as a
+      legend_id. The data will be grouped using the legend expressions. For
+      For instance, use grouping=23 for grouping the output with legend 23.
+    """
+    from .models import RasterLayer, RasterTile, Legend
+
+    algebra_parser = RasterAlgebraParser()
 
     # Get layers
     layers = RasterLayer.objects.filter(id__in=layer_dict.values())
+
+    # Compute zoom if not provided
+    if zoom is None:
+        zoom = min(layers.values_list('metadata__max_zoom', flat=True))
 
     # Compute tilerange for this area and the given zoom level
     if geom:
@@ -75,6 +96,10 @@ def aggregator(layer_dict, zoom, geom=None, formula=None, acres=True):
         # This is important for requests on large areas for small rasters.
         max_extent = MultiPolygon([Polygon.from_bbox(lyr.extent()) for lyr in layers]).envelope
         max_extent = geom.intersection(max_extent)
+
+        # Abort if there is no spatial overlay
+        if max_extent.empty:
+            return {}
 
         # Compute tile index range for geometry and given zoom level
         tilerange = tile_index_range(max_extent.extent, zoom)
@@ -90,8 +115,20 @@ def aggregator(layer_dict, zoom, geom=None, formula=None, acres=True):
             min([dat[3] for dat in index_ranges])
         ]
 
-    # Check if all input layers are discrete
-    all_discrete = all([lyr.datatype in ['ca', 'ma'] for lyr in layers])
+    # Auto determine grouping based on input data
+    if grouping == 'auto':
+        all_discrete = all([lyr.datatype in ['ca', 'ma'] for lyr in layers])
+        grouping = 'discrete' if all_discrete else 'continuous'
+    elif grouping in ('discrete', 'continuous'):
+        pass
+    else:
+        # Try converting the grouping input to int
+        try:
+            grouping = int(grouping)
+        except:
+            raise RasterAggregationException(
+                'Invalid grouping value found for valuecount.'
+            )
 
     # Loop through tiles and evaluate raster algebra for each tile
     results = Counter({})
@@ -118,7 +155,7 @@ def aggregator(layer_dict, zoom, geom=None, formula=None, acres=True):
                 continue
 
             # Evaluate algebra on tiles
-            result = parser.evaluate_raster_algebra(data, formula)
+            result = algebra_parser.evaluate_raster_algebra(data, formula)
 
             # Get resulting array masked with na values
             result_data = numpy.ma.masked_values(
@@ -137,22 +174,37 @@ def aggregator(layer_dict, zoom, geom=None, formula=None, acres=True):
                 # Apply geometry mask to result data
                 result_data.mask = result_data.mask | rastgeom_mask
 
-            # Compute unique counts for discrete input data
-            if all_discrete:
-                unique_counts = numpy.unique(result_data, return_counts=True)
+            if grouping == 'discrete':
+                # Compute unique counts for discrete input data
+                unique_counts = numpy.unique(result_data.compressed(), return_counts=True)
                 # Add counts to results
-                results += Counter(dict(zip(unique_counts[0], unique_counts[1])))
-            else:
-                # Handle continuous case - compute histogram
-                counts, bins = numpy.histogram(result_data)
+                values = dict(zip(unique_counts[0], unique_counts[1]))
+
+            elif grouping == 'continuous':
+                # Handle continuous case - compute histogram on masked (compresed) data
+                counts, bins = numpy.histogram(result_data.compressed())
 
                 # Create dictionary with bins as keys and histogram counts as values
                 values = {}
                 for i in range(len(bins) - 1):
                     values[(bins[i], bins[i + 1])] = counts[i]
 
-                # Add counts to results
-                results += Counter(values)
+            elif isinstance(grouping, int):
+                # Use legend to compute value counts
+                formula_parser = FormulaParser()
+                legend = Legend.objects.get(id=grouping)
+                values = {}
+                for key, color in legend.colormap.items():
+                    try:
+                        # Try to use the key as number directly
+                        selector = result_data == float(key)
+                    except ValueError:
+                        # Otherwise use it as numpy expression directly
+                        selector = formula_parser.evaluate_formula(key, {'x': result_data})
+                    values[key] = numpy.sum(selector)
+
+            # Add counts to results
+            results += Counter(values)
 
     # Transform pixel count to acres if requested
     scaling_factor = 1
@@ -250,10 +302,6 @@ class ValueCountMixin(object):
         """
         Compute value counts or histograms for rasterlayers within a geometry.
         """
-        # Automatically determine zoom if not provided
-        if not zoom:
-            zoom = self._max_zoom
-
         # Setup layer id and formula for evaluation of aggregator
         ids = {'a': self.id}
         formula = 'a'

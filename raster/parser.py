@@ -29,6 +29,7 @@ class RasterLayerParser(object):
         # Set raster tilesize
         self.tilesize = int(getattr(settings, 'RASTER_TILESIZE', WEB_MERCATOR_TILESIZE))
         self.zoomdown = getattr(settings, 'RASTER_ZOOM_NEXT_HIGHER', True)
+        self.compress = getattr(settings, 'RASTER_COMPRESS_METHOD', None)
 
     def log(self, msg, reset=False):
         """
@@ -165,6 +166,7 @@ class RasterLayerParser(object):
             'scale': [tilescale, -tilescale],
             'width': sizex,
             'height': sizey,
+            'compress': self.compress,
         })
 
         self.log('Creating {0} tiles for zoom {1}.'.format(nr_of_tiles, zoom))
@@ -180,12 +182,28 @@ class RasterLayerParser(object):
                 # Calculate raster tile origin
                 bounds = tiler.tile_bounds(tilex, tiley, zoom)
 
+                # Construct band data arrays
+                pixeloffset = (
+                    (tilex - indexrange[0]) * self.tilesize,
+                    (tiley - indexrange[1]) * self.tilesize
+                )
+
+                band_data = [
+                    {
+                        'data': band.data(offset=pixeloffset, size=(self.tilesize, self.tilesize)),
+                        'nodata_value': band.nodata_value
+                    } for band in snapped_dataset.bands
+                ]
+
                 # Warp source raster into this tile (in memory)
-                dest = snapped_dataset.warp({
-                    'driver': 'MEM',
+                dest = GDALRaster({
                     'width': self.tilesize,
                     'height': self.tilesize,
                     'origin': [bounds[0], bounds[3]],
+                    'scale': [tilescale, -tilescale],
+                    'srid': WEB_MERCATOR_SRID,
+                    'datatype': snapped_dataset.bands[0].datatype(),
+                    'bands': band_data,
                 })
 
                 # Store tile
@@ -241,7 +259,7 @@ class RasterLayerParser(object):
                 self.log('Dataset already in SRID {0}, skipping transform'.format(WEB_MERCATOR_SRID))
             else:
                 self.log('Transforming raster to SRID {0}'.format(WEB_MERCATOR_SRID))
-                self.dataset = self.dataset.transform(WEB_MERCATOR_SRID)
+                self.dataset = self.dataset.transform(WEB_MERCATOR_SRID, compress=self.compress)
 
             # Compute max zoom at the web mercator projection
             max_zoom = tiler.closest_zoomlevel(

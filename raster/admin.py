@@ -14,12 +14,12 @@ class FilenameActionForm(forms.Form):
     path = forms.CharField(label='Filepath', required=False)
 
 
-class TestInline(admin.TabularInline):
+class RasterLayerMetadataInline(admin.TabularInline):
     model = RasterLayerMetadata
 
     readonly_fields = (
         'rasterlayer', 'uperleftx', 'uperlefty', 'width', 'height',
-        'scalex', 'scaley', 'skewx', 'skewy', 'numbands', 'srid', 'srs_wkt',
+        'scalex', 'scaley', 'skewx', 'skewy', 'numbands', 'srid', 'srs_wkt', 'max_zoom',
     )
 
     def has_add_permission(self, request, obj=None):
@@ -40,7 +40,7 @@ class RasterLayerModelAdmin(admin.ModelAdmin):
     actions = ['reparse_rasters', 'manually_update_filepath']
     list_filter = ('datatype', )
     search_fields = ('name', 'rasterfile')
-    inlines = (TestInline, )
+    inlines = (RasterLayerMetadataInline, )
 
     def reparse_rasters(self, request, queryset):
         """
@@ -119,6 +119,7 @@ class LegendAdmin(admin.ModelAdmin):
     inlines = (
         LegendEntriesInLine,
     )
+    exclude = ['entries']
 
 admin.site.register(LegendSemantics)
 admin.site.register(RasterLayer, RasterLayerModelAdmin)
