@@ -2,6 +2,7 @@ language: python
 
 python:
   - "2.7"
+  - "3.4"
 
 addons:
   postgresql : "9.3"
@@ -23,9 +24,9 @@ install:
     - pip install Pillow==2.7.0
     - pip install django-colorful==1.0.1
     - pip install pyparsing==2.0.3
-    - pip install git+https://github.com/geodesign/django.git@geodesign_v1
-    - pip install flake8==2.4.0
-    - pip install isort==3.9.6
+    - pip install django==1.9b1
+    - pip install flake8==2.5.0
+    - pip install isort==4.2.2
 
 script: django-admin.py test
 
