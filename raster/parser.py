@@ -259,7 +259,7 @@ class RasterLayerParser(object):
                 self.log('Dataset already in SRID {0}, skipping transform'.format(WEB_MERCATOR_SRID))
             else:
                 self.log('Transforming raster to SRID {0}'.format(WEB_MERCATOR_SRID))
-                self.dataset = self.dataset.transform(WEB_MERCATOR_SRID, compress=self.compress)
+                self.dataset = self.dataset.transform(WEB_MERCATOR_SRID)#, compress=self.compress)
 
             # Compute max zoom at the web mercator projection
             max_zoom = tiler.closest_zoomlevel(
