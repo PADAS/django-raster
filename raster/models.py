@@ -35,9 +35,8 @@ class LegendEntry(models.Model):
     """
     semantics = models.ForeignKey(LegendSemantics)
     expression = models.CharField(max_length=500,
-            help_text='Use a number or a valid numpy logical expression '
-                      'where x is the pixel value. For instance: "(-3.0 < x) '
-                      '& (x <= 1)" or "x <= 1".')
+        help_text='Use a number or a valid numpy logical expression where x is the'
+                  'pixel value. For instance: "(-3.0 < x) & (x <= 1)" or "x <= 1".')
     color = RGBColorField()
 
     def __str__(self):
@@ -133,10 +132,11 @@ class RasterLayer(models.Model, ValueCountMixin):
 
     name = models.CharField(max_length=100, blank=True, null=True)
     description = models.TextField(blank=True, null=True)
-    datatype = models.CharField(max_length=2, choices=DATATYPES,
-                                default='co')
+    datatype = models.CharField(max_length=2, choices=DATATYPES, default='co')
     rasterfile = models.FileField(upload_to='rasters', null=True, blank=True)
-    nodata = models.CharField(max_length=100, null=True, blank=True)
+    nodata = models.CharField(max_length=100, null=True, blank=True,
+        help_text='Leave blank to keep the internal band nodata values. If a nodata'
+                  'value is specified here, it will be used for all bands of this raster.')
     legend = models.ForeignKey(Legend, blank=True, null=True)
     modified = models.DateTimeField(auto_now=True)
 
@@ -315,7 +315,6 @@ class RasterTile(models.Model):
     rid = models.AutoField(primary_key=True)
     rast = models.RasterField(null=True, blank=True, srid=WEB_MERCATOR_SRID)
     rasterlayer = models.ForeignKey(RasterLayer, null=True, blank=True, db_index=True)
-    filename = models.TextField(null=True, blank=True, db_index=True)
     tilex = models.IntegerField(db_index=True, null=True)
     tiley = models.IntegerField(db_index=True, null=True)
     tilez = models.IntegerField(db_index=True, null=True, choices=ZOOMLEVELS)

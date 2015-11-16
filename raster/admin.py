@@ -68,7 +68,7 @@ class RasterLayerModelAdmin(admin.ModelAdmin):
     files.
     """
     actions = ['reparse_rasters', 'manually_update_filepath']
-    list_filter = ('datatype', )
+    list_filter = ('datatype', 'parsestatus__status')
     search_fields = ('name', 'rasterfile')
     inlines = (
         RasterLayerParseStatusInline,
@@ -135,7 +135,7 @@ class RasterLayerMetadataModelAdmin(admin.ModelAdmin):
 
 class RasterTileModelAdmin(admin.ModelAdmin):
     readonly_fields = (
-        'rast', 'rasterlayer', 'filename', 'tilex', 'tiley', 'tilez',
+        'rast', 'rasterlayer', 'tilex', 'tiley', 'tilez',
     )
 
     def has_add_permission(self, request, obj=None):
